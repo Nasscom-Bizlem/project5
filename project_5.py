@@ -78,6 +78,7 @@ def request_header_data_async(s, index, res):
     res[index] = request_header_data(s)
 
 def p5_process_html_no_header(arr, sarr, res, verbose=True):
+    if verbose: print('process html with no header')
     result = {
         'header_data': [],
         'table_data': [],
@@ -122,14 +123,16 @@ def p5_process_html_no_header(arr, sarr, res, verbose=True):
         if start < len(arr[i]):
             item.append(arr[i][start:])
 
-        if len(item) >= 12 or len(item) <= 2:
-            continue
+        # if len(item) >= 12 or len(item) <= 2:
+        #     continue
 
         obj = {
             'data': {},
             'header': {},
             'line_index': i,
             'StructureType': 'paragraph',
+            'label_line_index': 0,
+            'label_string': arr[0],
         }
 
         for i in range(len(item)):
@@ -141,6 +144,7 @@ def p5_process_html_no_header(arr, sarr, res, verbose=True):
     return result
 
 def p5_process_html_with_header(arr, sarr, res, verbose=True):
+    if verbose: print('process html with header')
     # find headers
     result = {
         'header_data': [],
@@ -212,6 +216,8 @@ def p5_process_html_with_header(arr, sarr, res, verbose=True):
             'header': {},
             'line_index': i,
             'StructureType': 'table',
+            'label_line_index': header_index,
+            'label_string': arr[header_index],
         }
 
         row = [ r.strip() for r in split_row(arr[i], pos) ]
@@ -268,21 +274,41 @@ def p5_process_html(path, verbose=True):
         for t in soup(['script', 'style', 'meta']):
             t.extract()
 
-        pretty_soup_str = soup.text
+        pretty_soup_str = soup.prettify()
+        normal_soup_str = soup.text
+
         pretty_soup_str = re.sub('\s+<span', '<span', pretty_soup_str)
+        normal_soup_str = re.sub('\s+<span', '<span', normal_soup_str)
 
 
     total_tables = 0
     try:
-        raw_tables = pd.read_html(pretty_soup_str)
-        format_html_table(raw_tables)
-        tables = separate_tables(raw_tables, table_margin=1)
-        r_table = p5_process_html_table(tables, verbose=verbose)
-        total_tables = len(raw_tables)
+        raw_pretty_tables = pd.read_html(pretty_soup_str)
     except ValueError:
-        r_table = {}
+        traceback.print_exc()
+        raw_pretty_tables = []
         if verbose:
-            print('No table found')
+            print('No pretty table found')
+
+    try:
+        raw_normal_tables = pd.read_html(normal_soup_str)
+    except ValueError:
+        traceback.print_exc()
+        raw_normal_tables = []
+        if verbose:
+            print('No pretty table found')
+
+    raw_tables = None
+    if len(raw_pretty_tables) > len(raw_normal_tables):
+        raw_tables = raw_pretty_tables
+    else:
+        raw_tables = raw_normal_tables
+
+    format_html_table(raw_tables)
+    tables = separate_tables(raw_tables, table_margin=1)
+    r_table = p5_process_html_table(tables, verbose=verbose)
+    total_tables = len(tables)
+
 
     soup = bs4.BeautifulSoup(pretty_soup_str, features='lxml')
     for t in soup(['table']):
@@ -291,15 +317,6 @@ def p5_process_html(path, verbose=True):
     arr = soup.text.replace('\xa0', ' ').split('\n')
     arr = [ t for t in arr if len(t.strip()) > 0 ]
     sarr = [ re.split('\s{2,}', t) for t in arr ]
-
-    found_table = False
-    for i, line in enumerate(arr):
-        if len(line) < 5 or len(sarr[i]) <= 3:
-            continue
-
-        if re.search('[^=\-\s]', line) is None:
-            found_table = True
-            break
 
     res = [None] * len(arr)
 
@@ -316,6 +333,14 @@ def p5_process_html(path, verbose=True):
 
     if verbose: print('finish requesting url of arr')
 
+    found_table = False
+    for i, line in enumerate(arr):
+        if len(line) < 5 or len(sarr[i]) <= 3:
+            continue
+
+        if re.search('[^=\-\s]', line) is None or len(res[i].keys()) >= 5:
+            found_table = True
+            break
 
     if not found_table:
         r_table['table_' + str(total_tables)] = p5_process_html_no_header(arr, sarr, res, verbose=verbose)
@@ -397,6 +422,7 @@ def process_table(table, table_name, container, verbose=True):
     if verbose: print(table.columns)
 
     results = table.astype(str).to_dict(orient='index')
+
     res = list(results.values())
     for obj in res:
         for key, value in obj.items():
@@ -605,7 +631,7 @@ def p5_process_file(path, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c24.html', verbose=True)
+    r = p5_process_html('../data/p5materials/html/c25.html', verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
