@@ -52,41 +52,60 @@ def request_word(word):
         errors.append(word)
         return []
 
-def p5_process_html_no_header(arr, sarr, verbose=True):
-    res = [None] * len(arr)
-    def request_no_header(arr, i, res):
-        r = request_word(arr[i])
-        if len(r) > 0:
-            res[i] = r
+def request_header_data(s):
+    header_data = {}
 
+    try:
+        r = requests.post(
+            URL_CHAIN, 
+            data=s.encode('utf-8'), 
+            headers={'Content-Type': 'application/pdf'},
+        )
+        r = r.json()
 
-    if verbose: print('requesting in process html no header')
+        for obj in r:
+            if LABEL_CHAIN in obj and TYPE_CHAIN in obj:
+                ref = obj[TYPE_CHAIN][0]['@id']
 
-    for i in range(0, len(arr), MAX_THREADS):
-        threads = [ threading.Thread(
-            target=request_no_header, 
-            args=(arr, i, res),
-        ) for i in range(i, min(i + MAX_THREADS, len(arr))) ]
+                if ref not in header_data:
+                    header_data[ref] = obj[LABEL_CHAIN][0]['@value']
+    except Exception as e:
+        traceback.print_exc()
 
-        for thread in threads: thread.start()
-        for thread in threads: thread.join()
+    return header_data
 
-    if verbose: print('finish requesting in process html no header')
+def request_header_data_async(s, index, res):
+    res[index] = request_header_data(s)
 
-    result = []
+def p5_process_html_no_header(arr, sarr, res, verbose=True):
+    result = {
+        'header_data': [],
+        'table_data': [],
+    }
 
     for i in range(len(arr)):
-        if res[i] is None:
-            continue
+        if len(res[i].keys()) == 0: continue
 
-        pos = [ re.search(word, arr[i], re.IGNORECASE) for word in res[i] ]
-        pos = [ (i.start(), i.end()) for i in pos if i is not None]
+        header_item = {
+            'line_index': i,
+            'number_of_words': len(res[i].keys()),
+            'data': [],
+        }
+
+        for header_data_key, header_data_value in res[i].items():
+            header_item['data'].append({
+                'url': header_data_key,
+                'word': header_data_value,
+            })
+
+        result['header_data'].append(header_item)
+
+        pos = [ re.search(word, arr[i], re.IGNORECASE) for word in res[i].values() ]
+        pos = [ (i.start(), i.end()) for i in pos if i is not None ]
         pos.sort(key=lambda x: x[0])
 
         item = []
-        cur = 0
-        start = 0
-        j = 0
+        cur, start, j = 0, 0, 0
 
         while j < len(arr[i]):
             if arr[i][j] == ' ' and (cur >= len(pos) or j < pos[cur][0]):
@@ -117,12 +136,17 @@ def p5_process_html_no_header(arr, sarr, verbose=True):
             obj['header'][str(i)] = 'unknown_' + str(i)
             obj['data'][str(i)] = item[i]
 
-        result.append(obj)
+        result['table_data'].append(obj)
 
     return result
 
-def p5_process_html_with_header(arr, sarr, verbose=True):
+def p5_process_html_with_header(arr, sarr, res, verbose=True):
     # find headers
+    result = {
+        'header_data': [],
+        'table_data': [],
+    }
+
     headers = []
     header_index = None
 
@@ -131,6 +155,20 @@ def p5_process_html_with_header(arr, sarr, verbose=True):
             headers = t
             header_index = i
             break
+        else:
+            header_item = {
+                'line_index': i,
+                'number_of_words': len(res[i].keys()),
+                'data': [],
+            }
+
+            for header_data_key, header_data_value in res[i].items():
+                header_item['data'].append({
+                    'url': header_data_key,
+                    'word': header_data_value,
+                })
+
+            result['header_data'].append(header_item)
 
     index = header_index + 1
     col_start = [0] * 200
@@ -139,7 +177,6 @@ def p5_process_html_with_header(arr, sarr, verbose=True):
     while index < len(arr):
         if re.search('[^=\- ]', arr[index]) is not None and len(sarr[index]) >= MIN_NUMBER_OF_WORDS - 2:
             start = get_start_of_word(arr[index])
-            # print(index, sarr[index], start)
             if len(start) / len(headers) > 0.5:
                 for p in start:
                     col_start[p] += 1
@@ -169,16 +206,21 @@ def p5_process_html_with_header(arr, sarr, verbose=True):
 
     if verbose: print(headers)
 
-    result = []
     for i in data_rows:
-        obj = {}
+        obj = {
+            'data': {},
+            'header': {},
+            'line_index': i,
+            'StructureType': 'table',
+        }
+
         row = [ r.strip() for r in split_row(arr[i], pos) ]
 
         for j in range(min(len(headers), len(row))):
-            obj[headers[j]] = row[j]
+            obj['header'][str(j)] = headers[j]
+            obj['data'][str(j)] = row[j]
 
-        obj['StructureType'] = 'table'
-        result.append(obj)
+        result['table_data'].append(obj)
 
     return result 
 
@@ -187,7 +229,7 @@ def p5_process_html_table(tables, verbose=True):
     container = {}
     threads = [ threading.Thread(
         target=process_table, 
-        args=(table, table_name, container, True, verbose)
+        args=(table, table_name, container, verbose)
     ) for table_name, table in tables.items() ]
 
     # Processing tables...
@@ -229,6 +271,7 @@ def p5_process_html(path, verbose=True):
         pretty_soup_str = soup.text
         pretty_soup_str = re.sub('\s+<span', '<span', pretty_soup_str)
 
+
     total_tables = 0
     try:
         raw_tables = pd.read_html(pretty_soup_str)
@@ -258,74 +301,85 @@ def p5_process_html(path, verbose=True):
             found_table = True
             break
 
-    if not found_table:
-        r_table['table_' + str(total_tables)] = {
-            'header_data': {},
-            'table_data': p5_process_html_no_header(arr, sarr, verbose=verbose),
-        }
-        return r_table
+    res = [None] * len(arr)
 
-    r_table['table_' + str(total_tables)] = {
-        'header_data': {},
-        'table_data': p5_process_html_with_header(arr, sarr, verbose=verbose),
-    }
+    if verbose: print('requesting url of arr')
+
+    for i in range(0, len(arr), MAX_THREADS):
+        threads = [ threading.Thread(
+            target=request_header_data_async, 
+            args=(arr[i], i, res),
+        ) for i in range(i, min(i + MAX_THREADS, len(arr))) ]
+
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
+
+    if verbose: print('finish requesting url of arr')
+
+
+    if not found_table:
+        r_table['table_' + str(total_tables)] = p5_process_html_no_header(arr, sarr, res, verbose=verbose)
+    else:
+        r_table['table_' + str(total_tables)] = p5_process_html_with_header(arr, sarr, res, verbose=verbose)
 
     return r_table
 
 
-def process_table(table, table_name, container, get_header_data=False, verbose=True):
+def process_table(table, table_name, container, verbose=True):
     table.dropna(how='all', inplace=True, axis=0)
     table.dropna(how='all', inplace=True, axis=1)
 
-    header_index = 0
     height, width = table.shape
+    res = [ None ] * height
+    result = {
+        'header_data': [],
+        'table_data': [],
+    }
 
-    header_data = {}
+    if verbose: print('requesting header urls in process_table...')
+    for i in range(0, height, MAX_THREADS):
+        threads = []
+        for i in range(i, min(i + MAX_THREADS, height)):
+            items = list(table.iloc[i])
+            items = [ item for item in items if isinstance(item, str) ]
+            s = ' '.join(items)
+            threads.append(threading.Thread(
+                target=request_header_data_async,
+                args=(s, i, res),
+            ))
+
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
+
+    if verbose: print('finish requesting header urls in process_table')
+
+    for i in range(height):
+        header_item = {
+            'line_index': i,
+            'number_of_words': len(res[i].keys()),
+            'data': [],
+        }
+
+        for header_data_key, header_data_value in res[i].items():
+            header_item['data'].append({
+                'url': header_data_key,
+                'word': header_data_value,
+            })
+
+        result['header_data'].append(header_item)
+
+
+    header_index = 0
     while header_index < height:
         c_nan = table.iloc[header_index].isna().sum()
         if c_nan / width < 0.7:
             break
 
-        if get_header_data:
-            arr = list(table.iloc[header_index])
-            arr = [ str(it) for it in arr if not pd.isnull(it) ]
-
-            r = requests.post(
-                URL_CHAIN, 
-                data=' '.join(arr).encode('utf-8'), 
-                headers={'Content-Type': 'application/pdf'},
-            )
-            r = r.json()
-
-            for obj in r:
-                if LABEL_CHAIN in obj and TYPE_CHAIN in obj:
-                    ref = obj[TYPE_CHAIN][0]['@id']
-
-                    if ref not in header_data:
-                        header_data[ref] = obj[LABEL_CHAIN][0]['@value']
-
         header_index += 1
 
-    if get_header_data:
-        # process header_data
-        selected_headers = set([
-            'RepositionRegion', 
-            'CargoType', 
-            'VesselType',
-            'Date',
-        ])
-
-        temp_header_data = {}
-        for header_key, header_value in header_data.items():
-            key = header_key.split('#')[-1]
-            if key == 'Port':
-                temp_header_data[header_key.replace('Port', 'RepositionRegion')] = header_value
-            elif key in selected_headers:
-                temp_header_data[header_key] = header_value
-        header_data = temp_header_data
-
-
-    if header_index >= height: return
+    if header_index >= height: 
+        container[table_name] = result 
+        return
 
     columns = table.iloc[header_index].astype(str).tolist()
 
@@ -340,8 +394,7 @@ def process_table(table, table_name, container, get_header_data=False, verbose=T
     table.drop(index=table.index[:header_index + 1], inplace=True)
 
 
-    if verbose:
-        print(table.columns)
+    if verbose: print(table.columns)
 
     results = table.astype(str).to_dict(orient='index')
     res = list(results.values())
@@ -350,7 +403,6 @@ def process_table(table, table_name, container, get_header_data=False, verbose=T
             if value is None or value == 'nan':
                 obj[key] = ''
 
-    separated_res = []
     for i, obj in enumerate(res):
         new_obj = {
             'StructureType': 'table',
@@ -365,15 +417,9 @@ def process_table(table, table_name, container, get_header_data=False, verbose=T
             new_obj['data'][index] = value
             index += 1
 
-        separated_res.append(new_obj)
+        result['table_data'].append(new_obj)
 
-    if get_header_data:
-        container[table_name] = {
-            'header_data': header_data,
-            'table_data': separated_res,
-        }
-    else:
-        container[table_name] = res
+    container[table_name] = result
 
 
 def separate_tables(raw_tables, table_margin=2):
@@ -432,27 +478,20 @@ def p5_process_excel(path, verbose=True):
     container = {}
     threads = [ threading.Thread(
         target=process_table, 
-        args=(table, table_name, container, True, verbose)
+        args=(table, table_name, container, verbose)
     ) for table_name, table in tables.items() ]
 
     # Processing tables...
-    if verbose:
-        print('processing tables...')
-
-    for thread in threads:
-        thread.start()
-
-    for thread in threads:
-        thread.join()
-
-    if verbose:
-        print('finish processing tables')
+    if verbose: print('processing tables...')
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+    if verbose: print('finish processing tables')
 
 
     return container
 
 
-def process_pdf(path):
+def p5_process_pdf(path, verbose=True):
     MARGIN_Y = 1.0
     A = 100000
 
@@ -510,21 +549,15 @@ def process_pdf(path):
 
     def request_row(sarr, line, res):
         threads = [ threading.Thread(target=request_label, args=(sarr, line, index, res)) for index in range(len(sarr[line])) ]
-
-        for thread in threads:
-            thread.start()
-
-        for thread in threads:
-            thread.join()
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
 
     threads = [ threading.Thread(target=request_row, args=(sarr, line, res)) for line in sarr.keys() ]
 
-    print('requesting')
-    for thread in threads:
-        thread.start()
-
-    for thread in threads:
-        thread.join()
+    if verbose: print('requesting in pdf...')
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+    if verbose: print('finish requesting in pdf')
 
     result = []
     header_index = None
@@ -566,15 +599,15 @@ def p5_process_file(path, verbose=True):
     if ext == 'html':
         return p5_process_html(path, verbose=verbose)
     elif ext == 'xls' or ext == 'xlsx':
-        return p5_process_excel(path)
+        return p5_process_excel(path, verbose=verbose)
     elif ext == 'json':
-        return process_pdf(path)
+        return p5_process_pdf(path, verbose=verbose)
 
 
 if __name__ == '__main__':
     r = p5_process_html('../data/p5materials/html/c24.html', verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
-    # r = p5_process_excel('p5materials/excel/x3.xlsx')
+    # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
 
-    # print(errors)
+    print(errors)
