@@ -131,8 +131,8 @@ def p5_process_html_no_header(arr, sarr, res, verbose=True):
             'header': {},
             'line_index': i,
             'StructureType': 'paragraph',
-            'label_line_index': 0,
-            'label_string': arr[0],
+            'label_line_index': 'unknown',
+            'label_string': 'unknown',
         }
 
         for i in range(len(item)):
