@@ -269,7 +269,7 @@ def format_html_table(raw_tables):
 
 
 def p5_process_html(path, verbose=True):
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         soup = bs4.BeautifulSoup(f, features='lxml')
         for t in soup(['script', 'style', 'meta']):
             t.extract()
@@ -527,7 +527,7 @@ def p5_process_pdf(path, verbose=True):
     def get_y(obj):
         return obj['position']['y']
 
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         data = json.load(f)
 
     # Build histogram
