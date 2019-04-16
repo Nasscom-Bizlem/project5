@@ -350,24 +350,27 @@ def p5_process_html(path, verbose=True):
             arr, 
             sarr, 
             res, 
-            verbose=verbose
+            verbose=verbose,
         )
     else:
         count = total_tables
         i = 0
 
+        found_separator = False
         while i < len(arr):
             if re.search('^[=\-\s]+$', arr[i]): 
+                found_separator = True
                 start_table = max(0, i - 1)
                 i += 1
 
                 while i < len(arr):
-                    if re.search('^[=\-\s]+$', arr[i]): 
-                        end_table = max(0, i - 1)
+                    if re.search('^[=\-\s]+$', arr[i]) or i == len(arr) - 1: 
+                        end_table = i
                         # print(start_table, end_table)
                         # for line in arr[start_table:end_table]:
                         #     print(line)
                         # print('end of table')
+                        # input()
 
                         p5_process_html_with_header(
                             arr[start_table:end_table], 
@@ -375,14 +378,25 @@ def p5_process_html(path, verbose=True):
                             res[start_table:end_table], 
                             r_table,
                             table_name='table_' + str(count),
-                            verbose=verbose
+                            verbose=verbose,
                         )
                         count += 1
+
+                        if end_table - start_table <= 2: i += 1
+                        else: i -= 1
                         break
-                    else:
-                        i += 1
-            else:
-                i += 1
+                    else: i += 1
+            else: i += 1
+
+        if not found_separator:
+            p5_process_html_with_header(
+                arr, 
+                sarr, 
+                res, 
+                r_table, 
+                table_name='table_' + str(count),
+                verbose=verbose,
+            )
 
     return r_table
 
@@ -674,7 +688,7 @@ def p5_process_file(path, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c30.html', verbose=True)
+    r = p5_process_html('../data/p5materials/html/c32.html', verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
