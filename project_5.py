@@ -19,7 +19,7 @@ def strip(s):
     return ''.join(re.split('[^a-zA-Z0-9]', s.lower()))
 
 def get_start_of_word(s):
-    it = re.finditer('[a-zA-Z0-9,\./\+]+', s)
+    it = re.finditer('[a-zA-Z0-9,\./\+\$\-]+', s)
     return [ i.start() for i in it ]
 
 def split_row(row, pos):
@@ -143,7 +143,7 @@ def p5_process_html_no_header(arr, sarr, res, verbose=True):
 
     return result
 
-def p5_process_html_with_header(arr, sarr, res, verbose=True):
+def p5_process_html_with_header(arr, sarr, res, r_table, table_name='table', verbose=True):
     if verbose: print('process html with header')
     # find headers
     result = {
@@ -174,17 +174,19 @@ def p5_process_html_with_header(arr, sarr, res, verbose=True):
 
             result['header_data'].append(header_item)
 
-    index = header_index + 1
+    if header_index is None: return
+    index = header_index
     col_start = [0] * 200
 
     data_rows = []
     while index < len(arr):
-        if re.search('[^=\- ]', arr[index]) is not None and len(sarr[index]) >= MIN_NUMBER_OF_WORDS - 2:
+        if re.match('^[^=\-\s]+$', arr[index]) is None and len(sarr[index]) >= MIN_NUMBER_OF_WORDS - 2:
             start = get_start_of_word(arr[index])
             if len(start) / len(headers) > 0.5:
                 for p in start:
                     col_start[p] += 1
                 data_rows.append(index)
+                # print(start)
 
         index += 1
 
@@ -228,6 +230,7 @@ def p5_process_html_with_header(arr, sarr, res, verbose=True):
 
         result['table_data'].append(obj)
 
+    r_table[table_name] = result
     return result 
 
 
@@ -338,14 +341,48 @@ def p5_process_html(path, verbose=True):
         if len(line) < 5 or len(sarr[i]) <= 3:
             continue
 
-        if re.search('[^=\-\s]', line) is None or len(res[i].keys()) >= 5:
+        if re.search('^[=\-\s]+$', line) is None or len(res[i].keys()) >= 5:
             found_table = True
             break
 
     if not found_table:
-        r_table['table_' + str(total_tables)] = p5_process_html_no_header(arr, sarr, res, verbose=verbose)
+        r_table['table_' + str(total_tables)] = p5_process_html_no_header(
+            arr, 
+            sarr, 
+            res, 
+            verbose=verbose
+        )
     else:
-        r_table['table_' + str(total_tables)] = p5_process_html_with_header(arr, sarr, res, verbose=verbose)
+        count = total_tables
+        i = 0
+
+        while i < len(arr):
+            if re.search('^[=\-\s]+$', arr[i]): 
+                start_table = max(0, i - 1)
+                i += 1
+
+                while i < len(arr):
+                    if re.search('^[=\-\s]+$', arr[i]): 
+                        end_table = max(0, i - 1)
+                        # print(start_table, end_table)
+                        # for line in arr[start_table:end_table]:
+                        #     print(line)
+                        # print('end of table')
+
+                        p5_process_html_with_header(
+                            arr[start_table:end_table], 
+                            sarr[start_table:end_table], 
+                            res[start_table:end_table], 
+                            r_table,
+                            table_name='table_' + str(count),
+                            verbose=verbose
+                        )
+                        count += 1
+                        break
+                    else:
+                        i += 1
+            else:
+                i += 1
 
     return r_table
 
@@ -574,11 +611,17 @@ def p5_process_pdf(path, verbose=True):
             res[line].append(r[0])
 
     def request_row(sarr, line, res):
-        threads = [ threading.Thread(target=request_label, args=(sarr, line, index, res)) for index in range(len(sarr[line])) ]
+        threads = [ threading.Thread(
+            target=request_label, 
+            args=(sarr, line, index, res)
+        ) for index in range(len(sarr[line])) ]
         for thread in threads: thread.start()
         for thread in threads: thread.join()
 
-    threads = [ threading.Thread(target=request_row, args=(sarr, line, res)) for line in sarr.keys() ]
+    threads = [ threading.Thread(
+        target=request_row, 
+        args=(sarr, line, res)
+    ) for line in sarr.keys() ]
 
     if verbose: print('requesting in pdf...')
     for thread in threads: thread.start()
@@ -631,7 +674,7 @@ def p5_process_file(path, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c25.html', verbose=True)
+    r = p5_process_html('../data/p5materials/html/c31.html', verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
