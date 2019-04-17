@@ -398,6 +398,8 @@ def p5_process_html(path, verbose=True):
                 verbose=verbose,
             )
 
+    r_table['lines'] = arr 
+    
     return r_table
 
 
