@@ -77,6 +77,54 @@ def request_header_data(s):
 def request_header_data_async(s, index, res):
     res[index] = request_header_data(s)
 
+def p5_process_html_with_lines(arr, sarr, res, r_table, table_name='table', verbose=True):
+    if verbose: print('process html with lines')
+    result = {
+        'header_data': [],
+        'table_data': [],
+    }
+
+    header_index = None
+    for i in range(len(arr)):
+        if len(res[i].keys()) == 0: continue 
+
+        header_item = {
+            'line_index': i,
+            'number_of_words': len(res[i].keys()),
+            'data': [],
+        }
+
+        for header_data_key, header_data_value in res[i].items():
+            header_item['data'].append({
+                'url': header_data_key,
+                'word': header_data_value,
+            })
+
+        result['header_data'].append(header_item)
+
+        if header_index is None:
+            if len(sarr[i]) >= MIN_NUMBER_OF_WORDS:
+                header_index = i
+        else:
+            obj = {
+                'StructureType': 'line',
+                'data': {
+                    '0': arr[i],
+                },
+                'header': {
+                    '0': arr[header_index],
+                },
+                'line_index': i,
+                'label_line_index': header_index,
+                'label_string': arr[header_index],
+            }
+
+            result['table_data'].append(obj)
+
+    r_table[table_name] = result
+    return result
+
+
 def p5_process_html_no_header(arr, sarr, res, verbose=True):
     if verbose: print('process html with no header')
     result = {
@@ -143,7 +191,19 @@ def p5_process_html_no_header(arr, sarr, res, verbose=True):
 
     return result
 
-def p5_process_html_with_header(arr, sarr, res, r_table, table_name='table', verbose=True):
+def p5_process_html_with_header(
+    arr, 
+    sarr, 
+    res, 
+    r_table, 
+    table_name='table', 
+    start_index=0,
+    stop_index=None,
+    verbose=True,
+):
+    if stop_index is None:
+        stop_index = len(arr)
+
     if verbose: print('process html with header')
     # find headers
     result = {
@@ -154,19 +214,19 @@ def p5_process_html_with_header(arr, sarr, res, r_table, table_name='table', ver
     headers = []
     header_index = None
 
-    for i, t in enumerate(sarr):
+    for i, t in enumerate(sarr[start_index:stop_index]):
         if len(t) >= MIN_NUMBER_OF_WORDS:
             headers = t
-            header_index = i
+            header_index = i + start_index
             break
         else:
             header_item = {
-                'line_index': i,
+                'line_index': i + start_index,
                 'number_of_words': len(res[i].keys()),
                 'data': [],
             }
 
-            for header_data_key, header_data_value in res[i].items():
+            for header_data_key, header_data_value in res[i + start_index].items():
                 header_item['data'].append({
                     'url': header_data_key,
                     'word': header_data_value,
@@ -179,7 +239,7 @@ def p5_process_html_with_header(arr, sarr, res, r_table, table_name='table', ver
     col_start = [0] * 200
 
     data_rows = []
-    while index < len(arr):
+    while index < min(stop_index, len(arr)):
         if re.match('^[^=\-\s]+$', arr[index]) is None and len(sarr[index]) >= MIN_NUMBER_OF_WORDS - 2:
             start = get_start_of_word(arr[index])
             if len(start) / len(headers) > 0.5:
@@ -271,7 +331,7 @@ def format_html_table(raw_tables):
 
 
 
-def p5_process_html(path, verbose=True):
+def p5_process_html(path, only_extract_html_line=False, verbose=True):
     with open(path, encoding='utf-8') as f:
         soup = bs4.BeautifulSoup(f, features='lxml')
         for t in soup(['script', 'style', 'meta']):
@@ -336,6 +396,17 @@ def p5_process_html(path, verbose=True):
 
     if verbose: print('finish requesting url of arr')
 
+    if only_extract_html_line:
+        p5_process_html_with_lines(
+            arr, 
+            sarr, 
+            res, 
+            r_table, 
+            table_name='table_' + str(total_tables),
+        )
+
+        return r_table
+
     found_table = False
     for i, line in enumerate(arr):
         if len(line) < 5 or len(sarr[i]) <= 3:
@@ -366,17 +437,13 @@ def p5_process_html(path, verbose=True):
                 while i < len(arr):
                     if re.search('^[=\-\s]+$', arr[i]) or i == len(arr) - 1: 
                         end_table = i
-                        # print(start_table, end_table)
-                        # for line in arr[start_table:end_table]:
-                        #     print(line)
-                        # print('end of table')
-                        # input()
-
                         p5_process_html_with_header(
-                            arr[start_table:end_table], 
-                            sarr[start_table:end_table], 
-                            res[start_table:end_table], 
+                            arr, 
+                            sarr, 
+                            res, 
                             r_table,
+                            start_index=start_table,
+                            stop_index=end_table,
                             table_name='table_' + str(count),
                             verbose=verbose,
                         )
@@ -398,8 +465,6 @@ def p5_process_html(path, verbose=True):
                 verbose=verbose,
             )
 
-    r_table['lines'] = arr 
-    
     return r_table
 
 
@@ -678,11 +743,11 @@ def p5_process_pdf(path, verbose=True):
 
     return result
 
-def p5_process_file(path, verbose=True):
+def p5_process_file(path, only_extract_html_line=False, verbose=True):
     ext = path.rsplit('.', 1)[1].lower()
 
     if ext == 'html':
-        return p5_process_html(path, verbose=verbose)
+        return p5_process_html(path, only_extract_html_line=only_extract_html_line, verbose=verbose)
     elif ext == 'xls' or ext == 'xlsx':
         return p5_process_excel(path, verbose=verbose)
     elif ext == 'json':

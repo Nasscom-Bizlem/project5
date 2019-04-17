@@ -30,12 +30,15 @@ def project5():
 
     file = request.files['file']
 
+    only_extract_html_line = request.form.get('only_extract_html_line', 'false') in set([ 'true', 'True', 1 ])
+    print(only_extract_html_line)
+
     if file and allowed_file(file.filename, ['html', 'json', 'xls', 'xlsx']):
         filename = secure_filename(file.filename)
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(path)
 
-        result = p5_process_file(path)
+        result = p5_process_file(path, only_extract_html_line=only_extract_html_line)
 
         return jsonify(result)
 
