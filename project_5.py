@@ -342,7 +342,6 @@ def p5_process_html(path, only_extract_html_line=False, verbose=True):
         pretty_soup_str = re.sub('\s+<span', '<span', pretty_soup_str)
         normal_soup_str = re.sub('\s+<span', '<span', normal_soup_str)
 
-
     total_tables = 0
     try:
         raw_pretty_tables = pd.read_html(pretty_soup_str)
@@ -372,6 +371,7 @@ def p5_process_html(path, only_extract_html_line=False, verbose=True):
     total_tables = len(tables)
 
 
+    pretty_soup_str = re.sub('(?<!\>)\n+', '', pretty_soup_str)
     soup = bs4.BeautifulSoup(pretty_soup_str, features='lxml')
     for t in soup(['table']):
         t.extract()
@@ -755,7 +755,7 @@ def p5_process_file(path, only_extract_html_line=False, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c36.html', only_extract_html_line=True, verbose=True)
+    r = p5_process_html('../data/p5materials/html/c37.html', only_extract_html_line=True, verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
