@@ -104,21 +104,21 @@ def p5_process_html_with_lines(arr, sarr, res, r_table, table_name='table', verb
 
         if len(sarr[i]) >= MIN_NUMBER_OF_WORDS:
             header_index = i
-        else:
-            obj = {
-                'StructureType': 'line',
-                'data': {
-                    '0': arr[i],
-                },
-                'header': {
-                    '0': arr[header_index],
-                },
-                'line_index': i,
-                'label_line_index': header_index,
-                'label_string': arr[header_index],
-            }
 
-            result['table_data'].append(obj)
+        obj = {
+            'StructureType': 'line',
+            'data': {
+                '0': arr[i],
+            },
+            'header': {
+                '0': arr[header_index],
+            },
+            'line_index': i,
+            'label_line_index': header_index,
+            'label_string': arr[header_index],
+        }
+
+        result['table_data'].append(obj)
 
     r_table[table_name] = result
     return result
@@ -755,7 +755,7 @@ def p5_process_file(path, only_extract_html_line=False, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c33.html', only_extract_html_line=True, verbose=True)
+    r = p5_process_html('../data/p5materials/html/c36.html', only_extract_html_line=True, verbose=True)
     #r = process_pdf('p5materials/pdf/p2.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
