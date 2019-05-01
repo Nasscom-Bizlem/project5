@@ -14,6 +14,7 @@ MAX_THREADS = 50
 URL_CHAIN = 'http://35.188.227.39:8080/enhancer/chain/scorpiosvchain'
 LABEL_CHAIN = 'http://fise.iks-project.eu/ontology/entity-label'
 TYPE_CHAIN = 'http://fise.iks-project.eu/ontology/entity-type'
+SITE_KEY = 'http://stanbol.apache.org/ontology/entityhub/entityhub#site'
 
 def strip(s):
     return ''.join(re.split('[^a-zA-Z0-9]', s.lower()))
@@ -35,18 +36,34 @@ def is_null_row(row):
 errors = []
 def request_word(word):
     try:
-        r = requests.post(URL_CHAIN, data=str(word).encode('utf-8'), headers={'Content-Type': 'application/pdf'})
+        r = requests.post(
+            URL_CHAIN, 
+            data=str(word).encode('utf-8'), 
+            headers={'Content-Type': 'application/pdf'},
+        )
+
         r = r.json()
 
         res = []
-        track = []
+        header_data = {}
+        count = 0
         for obj in r:
+            if SITE_KEY in obj and obj[SITE_KEY][0]['@value'] == 'scorpioheaders':
+                count += 1
+
             if LABEL_CHAIN in obj:
                 v = obj[LABEL_CHAIN][0]['@value']
-                if strip(v) not in track:
-                    res.append(v)
-                    track.append(strip(v))
-        return res
+                res.append(v)
+
+                if TYPE_CHAIN in obj:
+                    ref = obj[TYPE_CHAIN][0]['@id']
+                    if ref not in header_data:
+                        header_data[ref] = v
+
+        if count >= 4:
+            return res, header_data, True
+
+        return res, header_data, False
     except Exception as e:
         traceback.print_exc()
         errors.append(word)
@@ -639,13 +656,11 @@ def p5_process_pdf(path, verbose=True):
     MARGIN_Y = 1.0
     A = 100000
 
-    def get_x(obj):
-        return obj['position']['x']
 
-    def get_y(obj):
-        return obj['position']['y']
+    def get_x(obj): return obj['position']['x']
+    def get_y(obj): return obj['position']['y']
 
-    with open(path, encoding='utf-8') as f:
+    with open(path, encoding='utf-8', errors='ignore') as f:
         data = json.load(f)
 
     # Build histogram
@@ -656,8 +671,7 @@ def p5_process_pdf(path, verbose=True):
     hist_y = { cur_y: cur_y }
 
     for yc in y:
-        if yc == cur_y:
-            continue
+        if yc == cur_y: continue
         if yc - cur_y > MARGIN_Y:
             cur_y = yc
         hist_y[yc] = cur_y
@@ -665,7 +679,6 @@ def p5_process_pdf(path, verbose=True):
     data.sort(key=lambda obj: hist_y[get_y(obj)] * A + get_x(obj))
     slist = {}
     stext = {}
-    sarr = {}
     for obj in data:
         hy = hist_y[get_y(obj)]
         if hy not in slist:
@@ -675,71 +688,85 @@ def p5_process_pdf(path, verbose=True):
         slist[hy].append(obj)
         stext[hy].append(obj['text'])
 
+    sarr = []
     for line, words in stext.items():
         sentence = ''.join(words)
-        sarr[line] = [ word for word in re.split('\s{2,}', sentence) if len(word) > 0 ]
+        sarr.append([ word for word in re.split('\s{2,}', sentence) if len(word) > 0 ])
 
-    #for line, words in sarr.items():
-    #    print(line, words)
+    sres = []
+    sheader = [ None ] * len(sarr)
+    for line in range(len(sarr)):
+        sres.append({
+            'is_header': False,
+            'data': '',
+        })
 
-    res = {}
-    for line in sarr.keys():
-        res[line] = []
-
-    def request_label(sarr, line, index, res):
-        r = request_word(sarr[line][index])
-        if len(r) > 0:
-            res[line].append(r[0])
-
-    def request_row(sarr, line, res):
-        threads = [ threading.Thread(
-            target=request_label, 
-            args=(sarr, line, index, res)
-        ) for index in range(len(sarr[line])) ]
-        for thread in threads: thread.start()
-        for thread in threads: thread.join()
+    def request_row(sarr, line, sres, sheader):
+        r, header_data, is_header = request_word(' '.join(sarr[line]))
+        sres[line]['is_header'] = is_header
+        sres[line]['data'] = r 
+        sheader[line] = header_data
 
     threads = [ threading.Thread(
         target=request_row, 
-        args=(sarr, line, res)
-    ) for line in sarr.keys() ]
+        args=(sarr, line, sres, sheader)
+    ) for line in range(len(sarr)) ]
 
     if verbose: print('requesting in pdf...')
     for thread in threads: thread.start()
     for thread in threads: thread.join()
     if verbose: print('finish requesting in pdf')
 
-    result = []
-    header_index = None
-    for line, words in sarr.items():
-        if len(words) <= 3:
-            continue
+    result = {}
+    current_table = {
+        'header_data': [],
+        'table_data': [],
+    }
+    count = 0
 
-        if len(res[line]) == len(sarr[line]):
-            header_index = line
-            continue
-
-        is_row = False
-        for word in words:
-            if re.search('[a-zA-Z0-0]', word) is not None:
-                is_row = True
-                break
-
-        if not is_row:
-            continue
-
-        if header_index is None:
-            obj = { 'StructureType': 'paragraph' }
-            count = 0
-            for word in words:
-                obj['unknown_' + str(count)] = word
+    header_index = 0
+    for line, words in enumerate(sarr):
+        if sres[line]['is_header']:
+            if len(current_table['table_data'] > 0):
+                result['table_' + str(count)] = current_table 
                 count += 1
-        else:
-            obj = { 'StructureType': 'table' }
-            for i in range(min(len(sarr[header_index]), len(words))):
-                obj[sarr[header_index][i]] = words[i]
 
-        result.append(obj)
+            current_table = {
+                'header_data': [],
+                'table_data': [],
+            }
+
+            header_index = line
+
+        header_item = {
+            'line_index': line,
+            'number_of_words': len(sheader[line].keys()),
+            'data': [],
+        }
+
+        for header_data_key, header_data_value in sheader[line].items():
+            header_item['data'].append({
+                'url': header_data_key,
+                'word': header_data_value,
+            })
+
+        current_table['header_data'].append(header_item)
+
+        current_table['table_data'].append({
+            'StructureType': 'line',
+            'data': {
+                '0': sarr[line],
+            },
+            'header': {
+                '0': sarr[header_index],
+            },
+            'line_index': line,
+            'label_line_index': header_index,
+            'label_string': sarr[header_index],
+        })
+
+    if len(current_table['table_data']) > 0:
+        result['table_' + str(count)] = current_table 
 
     return result
 
@@ -755,9 +782,7 @@ def p5_process_file(path, only_extract_html_line=False, verbose=True):
 
 
 if __name__ == '__main__':
-    r = p5_process_html('../data/p5materials/html/c37.html', only_extract_html_line=True, verbose=True)
-    #r = process_pdf('p5materials/pdf/p2.json')
+    # r = p5_process_html('../data/p5materials/html/c37.html', only_extract_html_line=True, verbose=True)
+    r = p5_process_pdf('../data/p5materials/pdf/p5.json')
     # r = p5_process_excel('p5materials/excel/x7.xlsx')
     print(json.dumps(r, indent=2))
-
-    print(errors)
