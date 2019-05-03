@@ -6,6 +6,7 @@ import numpy as np
 import re
 import bs4
 import traceback
+from svg_parser import simplify_json
 
 
 MIN_NUMBER_OF_WORDS = 5
@@ -727,16 +728,18 @@ def p5_process_pdf(path, verbose=True):
     header_index = 0
     for line, words in enumerate(sarr):
         if sres[line]['is_header']:
-            if len(current_table['table_data'] > 0):
-                result['table_' + str(count)] = current_table 
-                count += 1
+            return simplify_json(data)
 
-            current_table = {
-                'header_data': [],
-                'table_data': [],
-            }
+            # if len(current_table['table_data'] > 0):
+            #     result['table_' + str(count)] = current_table 
+            #     count += 1
 
-            header_index = line
+            # current_table = {
+            #     'header_data': [],
+            #     'table_data': [],
+            # }
+
+            # header_index = line
 
         header_item = {
             'line_index': line,
@@ -755,10 +758,10 @@ def p5_process_pdf(path, verbose=True):
         current_table['table_data'].append({
             'StructureType': 'line',
             'data': {
-                '0': sarr[line],
+                '0': ''.join(sarr[line]),
             },
             'header': {
-                '0': sarr[header_index],
+                '0': ''.join(sarr[header_index]),
             },
             'line_index': line,
             'label_line_index': header_index,
