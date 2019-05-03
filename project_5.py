@@ -6,13 +6,15 @@ import numpy as np
 import re
 import bs4
 import traceback
+from tqdm import tqdm
+
 from svg_parser import simplify_json
 
 
 MIN_NUMBER_OF_WORDS = 5
 VOTE_RATE = 0.3
 MAX_THREADS = 50
-URL_CHAIN = 'http://35.188.227.39:8080/enhancer/chain/scorpiosvchain2'
+URL_CHAIN = 'http://35.227.82.195:8080/enhancer/chain/scorpiosvchain2'
 LABEL_CHAIN = 'http://fise.iks-project.eu/ontology/entity-label'
 TYPE_CHAIN = 'http://fise.iks-project.eu/ontology/entity-type'
 SITE_KEY = 'http://stanbol.apache.org/ontology/entityhub/entityhub#site'
@@ -68,7 +70,7 @@ def request_word(word):
     except Exception as e:
         traceback.print_exc()
         errors.append(word)
-        return []
+        return [], {}, False
 
 def request_header_data(s):
     header_data = {}
@@ -708,14 +710,16 @@ def p5_process_pdf(path, verbose=True):
         sres[line]['data'] = r 
         sheader[line] = header_data
 
-    threads = [ threading.Thread(
-        target=request_row, 
-        args=(sarr, line, sres, sheader)
-    ) for line in range(len(sarr)) ]
-
     if verbose: print('requesting in pdf...')
-    for thread in threads: thread.start()
-    for thread in threads: thread.join()
+    for i in tqdm(range(0, len(sarr), MAX_THREADS)):
+        threads = [ threading.Thread(
+            target=request_row, 
+            args=(sarr, line, sres, sheader),
+        ) for line in range(i, min(i + MAX_THREADS, len(sarr))) ]
+
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
+
     if verbose: print('finish requesting in pdf')
 
     result = {}
