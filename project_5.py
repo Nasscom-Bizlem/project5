@@ -12,7 +12,7 @@ from svg_parser import simplify_json
 MIN_NUMBER_OF_WORDS = 5
 VOTE_RATE = 0.3
 MAX_THREADS = 50
-URL_CHAIN = 'http://35.188.227.39:8080/enhancer/chain/scorpiosvchain'
+URL_CHAIN = 'http://35.188.227.39:8080/enhancer/chain/scorpiosvchain2'
 LABEL_CHAIN = 'http://fise.iks-project.eu/ontology/entity-label'
 TYPE_CHAIN = 'http://fise.iks-project.eu/ontology/entity-type'
 SITE_KEY = 'http://stanbol.apache.org/ontology/entityhub/entityhub#site'
