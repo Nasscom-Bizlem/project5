@@ -727,7 +727,7 @@ def p5_process_pdf(path, verbose=True):
     header_index = 0
     for line, words in enumerate(sarr):
         if sres[line]['is_header']:
-            if len(current_table['table_data'] > 0):
+            if len(current_table['table_data']) > 0:
                 result['table_' + str(count)] = current_table 
                 count += 1
 
