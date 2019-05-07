@@ -755,10 +755,10 @@ def p5_process_pdf(path, verbose=True):
         current_table['table_data'].append({
             'StructureType': 'line',
             'data': {
-                '0': sarr[line],
+                '0': ' '.join(sarr[line]),
             },
             'header': {
-                '0': sarr[header_index],
+                '0': ' '.join(sarr[header_index]),
             },
             'line_index': line,
             'label_line_index': header_index,
