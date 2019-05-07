@@ -20,7 +20,7 @@ def allowed_file(filename, extensions):
 
 @app.route('/')
 def hello():
-    return 'Hello World Project 5'
+    return 'Hello World Project 5 0.1.1'
 
 
 @app.route('/project5', methods=['POST'])
