@@ -67,7 +67,7 @@ def request_word(word):
     except Exception as e:
         traceback.print_exc()
         errors.append(word)
-        return []
+        return [], {}, False
 
 def request_header_data(s):
     header_data = {}
