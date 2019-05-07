@@ -20,20 +20,19 @@ def allowed_file(filename, extensions):
 
 @app.route('/')
 def hello():
-    return 'Hello World Project 5'
+    return 'Hello World Project 5 version 1.0.0'
 
 
-@app.route('/project5', methods=['POST'])
-def project5():
+@app.route('/project5/text', methods=['POST'])
+def process_text():
     if 'file' not in request.files:
         return jsonify({ 'error': 'No file provided' }), 400
 
     file = request.files['file']
 
     only_extract_html_line = request.form.get('only_extract_html_line', 'false') in set([ 'true', 'True', 1 ])
-    print(only_extract_html_line)
 
-    if file and allowed_file(file.filename, ['html', 'json', 'xls', 'xlsx']):
+    if file and allowed_file(file.filename, ['html', 'xls', 'xlsx']):
         filename = secure_filename(file.filename)
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(path)
@@ -42,6 +41,21 @@ def project5():
 
         return jsonify(result)
 
+@app.route('/project5/json', methods=['POST'])
+def process_pdf():
+    if 'file' not in request.files:
+        return jsonify({ 'error': 'No file provided' }), 400
+
+    file = request.files['file']
+
+    if file and allowed_file(file.filename, ['json']):
+        filename = secure_filename(file.filename)
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(path)
+
+        result = p5_process_file(path)
+
+        return jsonify(result)
 
 
 if __name__ == '__main__':
